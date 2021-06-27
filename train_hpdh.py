@@ -1,5 +1,6 @@
 # # python train_cifar100_hierarchy.py --len 32 --network res50 --bs 192 --save hierar_cifar100_32_2.pth
 import os
+import pickle
 os.environ["CUDA_VISIBLE_DEVICES"] = "0, 1"
 import torch.backends.cudnn as cudnn
 from torch.utils.data import DataLoader
@@ -16,12 +17,13 @@ import torch.optim as optim
 from utils import *
 import torch.nn.functional as F
 from torch.optim.lr_scheduler import MultiStepLR
+"""
+The single level class-wise loss is inherited from https://github.com/mzhang367/dcwh
+"""
 
-
-parser = argparse.ArgumentParser(description='PyTorch Deep class-wise hashing Imple.')
+parser = argparse.ArgumentParser(description='PyTorch Implementation of Semantic Hierarchy Preserving Deep Hashing')
 parser.add_argument('--lr', default=1e-3, type=float, help='learning rate')
 parser.add_argument('--freq', default=100, type=int, help='freq. of print batch information')
-# parser.add_argument('-r', '--up_c', action='store_true', help='update centroids manually instead of gradient descent')
 parser.add_argument('--path', nargs='+', help='path to loading/saving models, accept multiple arguments as list')
 parser.add_argument('--len', nargs='+', type=int, help='length of hashing codes, accept multiple arguments as list, should be (16, 32, 64, 128)')
 
@@ -62,6 +64,7 @@ transform_test = transforms.Compose([
     transforms.ToTensor(),
     Normalize,
 ])
+
 if args.dataset == "cifar100":
 
     hier_list = [100, 20]
@@ -82,8 +85,23 @@ if args.dataset == "cifar100":
     print("number of training batches per epoch:", len(trainloader))
     print("number of test images: ", len(testset.test_labels))
     print("number of testing batches per epoch:", len(testloader))
-    with open('labels_rel_cifar100.pickle', 'rb') as f:
-        list_of_list_hierar = pickle.load(f)
+    if not os.path.exists('labels_rel_cifar100.pickle'):
+        label_index = []
+        super_sub = [[] for i in range(20)]
+        lists_of_lists_hierar = []
+        for batch_idx, (_, targets) in enumerate(trainloader):
+            for j in range(targets.shape[0]):
+                if targets[j, 0] not in label_index:
+                    label_index.append(targets[j, 0])
+                    super_sub[targets[j, 1]].append(targets[j, 0])
+        lists_of_lists_hierar.append(super_sub)
+
+        with open('labels_rel_cifar100.pickle', 'wb') as f:
+            pickle.dump(lists_of_lists_hierar, f, protocol=pickle.DEFAULT_PROTOCOL)
+    else:
+
+        with open('labels_rel_cifar100.pickle', 'rb') as f:
+            list_of_list_hierar = pickle.load(f)
 
     ##################################################################################################
 
@@ -92,35 +110,36 @@ elif args.dataset == "nabirds":
     hier_list = [555, 495, 228, 22]
     sigmas = [1, 0.67, 0.5, 0.25]
 
-    with open('train_test_split_list.pickle', 'rb') as f:
+    with open('train_test_split.pickle', 'rb') as f:
         train_paths, test_paths = pickle.load(f)
 
-    train_labels = np.load("train_labels_birds.npy")
-    test_labels = np.load("test_labels_birds.npy")
+    train_labels = np.load("train_labels_nabirds.npy")
+    test_labels = np.load("test_labels_nabirds.npy")
 
     trainset = MyCustomNabirds(train_paths, train_labels, transform_train)
     trainloader = torch.utils.data.DataLoader(trainset, batch_size=args.bs, shuffle=True, num_workers=4, pin_memory=True)
 
     testset = MyCustomNabirds(test_paths, test_labels, transform_test)
     testloader = torch.utils.data.DataLoader(testset, batch_size=args.bs, shuffle=False, num_workers=4, pin_memory=True)
-    # classses_sub = hier_list[0]
-    '''all_low_to_high = []
-    for i in range(1, 4):
-        label_index = []
-        low_to_high = [[] for k in range(hier_list[i])]
-        train_labels_level = train_labels[:, i-1:i+1]
-        for j in range(train_labels_level.shape[0]):
-            if train_labels_level[j, 0] not in label_index:
-                label_index.append(train_labels_level[j, 0])
-                low_to_high[int(train_labels_level[j, 1])].append(int(train_labels_level[j, 0]))
-        all_low_to_high.append(low_to_high)
-    
-    with open('labels_rel_nabirds.pickle', 'wb') as f:
-        pickle.dump(all_low_to_high, f, protocol=pickle.HIGHEST_PROTOCOL)
-        '''
+    if not os.path.exists('labels_rel_nabirds.pickle'):
+        list_of_list_hierar = []
+        for i in range(1, 4):
+            label_index = []
+            low_to_high = [[] for k in range(hier_list[i])]
+            train_labels_level = train_labels[:, i-1:i+1]
+            for j in range(train_labels_level.shape[0]):
+                if train_labels_level[j, 0] not in label_index:
+                    label_index.append(train_labels_level[j, 0])
+                    low_to_high[int(train_labels_level[j, 1])].append(int(train_labels_level[j, 0]))
+            list_of_list_hierar.append(low_to_high)
 
-    with open('labels_rel_nabirds.pickle', 'rb') as f:
-        list_of_list_hierar = pickle.load(f)
+        with open('labels_rel_nabirds.pickle', 'wb') as f:
+            pickle.dump(list_of_list_hierar, f, protocol=pickle.DEFAULT_PROTOCOL)
+
+    else:
+
+        with open('labels_rel_nabirds.pickle', 'rb') as f:
+            list_of_list_hierar = pickle.load(f)
 
 
 def adjust_learning_rate(optimizer, epoch):
@@ -135,16 +154,10 @@ def adjust_learning_rate(optimizer, epoch):
 
 def centers_update(model, data_loader, hier_list, num_data, len_bit):
     """
-    with the pre-recorded list_of_list hierarchy
-    :param model:
-    :param data_loader:
-    :param hier_list:
-    :param num_data:
-    :param len_bit:
-    :return:
+    Update centroids recursively of each level of hierarchy
     """
     U = torch.Tensor(num_data, len_bit).cuda()
-    labels = torch.IntTensor(num_data, len(hier_list)).cuda()   # inner, super
+    labels = torch.IntTensor(num_data, len(hier_list)).cuda()
     centers = [torch.Tensor(hier_list[i], len_bit).cuda() for i in range(len(hier_list))]
     for iter, (data, targets) in enumerate(data_loader):
         data_input, target = data.cuda(), targets.cuda()
@@ -186,15 +199,11 @@ def train(len_bit, save_path):
     net = torch.nn.DataParallel(net).to(device)
 
     for name, module in net.named_children():
-        # print(name, '\t\t', module)
         if isinstance(module, nn.Linear):
-            print("catch it !")
             torch.nn.init.xavier_uniform_(module.weight.data)
-        #torch.nn.init.constant_(module.bias.data, 0.0)
-        #torch.nn.init.xavier_uniform_(module.bias)'''
     optimizer = optim.SGD([
         {'params': net.module.parameters(), 'weight_decay': 5e-4, 'lr': args.lr},
-        #{'params': hier_construct.parameters(), 'weight_decay': 5e-4, 'lr': 5e-4},
+        # {'params': hier_construct.parameters(), 'weight_decay': 5e-4, 'lr': 5e-4},
     ], momentum=0.9)
 
     schedule = MultiStepLR(optimizer, milestones=[50, 100], gamma=0.1)  # [50, 150]
@@ -212,11 +221,11 @@ def train(len_bit, save_path):
         cubic_reg_loss = AverageMeter()
         vertex_reg_loss = AverageMeter()
         print('==> Epoch: %d' % (epoch + 1))
-        # adjust_learning_rate(optimizer, epoch)##
+        # adjust_learning_rate(optimizer, epoch)
         ##############################################
         for batch_idx, (inputs, targets) in enumerate(trainloader):
             inputs, targets = inputs.cuda(), targets.cuda()  # shape of [batch_size, num_hier]
-            #print(targets.shape)
+            # print(targets.shape)
             optimizer.zero_grad()
             features = net(inputs)
             # centers = hier_construct(hier_list, labels_rel)     # compute centers with hierarchy, then fed to the loss
@@ -225,7 +234,6 @@ def train(len_bit, save_path):
 
             loss_cubic = F.relu(-1.1 - features).sum() + F.relu(features - 1.1).sum()
             loss_l2 = loss_cubic / len(inputs)
-
 
             Bbatch = torch.sign(features)
             # centers_sign = [torch.sign(centers[i]) for i in range(len(hier_list))]

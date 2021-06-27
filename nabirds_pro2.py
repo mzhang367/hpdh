@@ -1,13 +1,11 @@
 import os
-import cv2
 import numpy as np
-import pdb
+#import pdb
 from collections import defaultdict
 import pickle
 from sklearn.preprocessing import LabelEncoder
 from PIL import Image
 import matplotlib.pyplot as plt
-
 
 def list_images(basePath, contains=None):
     image_types = (".jpg")
@@ -54,73 +52,54 @@ def save_hierarchy_labels(dirname):
 
 def find_class_hierarchy(class_map):
 
-    children_chain = list(class_map[:, 0])
+    # Extract full hierarchy label information from all the child-parent class label pairs
+    # child_chain = list(class_map[:, 0])
+    child_nodes = list(class_map[:, 0])  # child nodes are naturally unique
     parent_chain = list(class_map[:, 1])
-    d = defaultdict(set)
-    # top_classes = []
-    for i in range(class_map.shape[0]):
-        d[class_map[i, 1]].add(class_map[i, 0])
-    child_classes = set(class_map[:, 0])
-    fine_classes = list(child_classes - d.keys())
+    # d = defaultdict(set)
+    parent_nodes = set(class_map[:, 1])   # create unique parent nodes
+    # for i in range(class_map.shape[0]):
+        # d[class_map[i, 1]].add(class_map[i, 0])
+    # child_classes = set(class_map[:, 0])  # create unique child node
+    fine_classes = list(set(child_nodes) - parent_nodes)  # remove all the nodes which are parent nodes to obtain leaf nodes
     print("num. of fine classes: ", len(fine_classes))
     hier_tree = {}
     levl_count = []
+    # we now trace back from leaf nodes to the root node
     for fine_class in fine_classes:
         i = 1
         hier_tree[fine_class] = []
         hier_tree[fine_class].append(fine_class)
-        #class_super = 100000
-        index_1 = children_chain.index(fine_class)
-        class_super = parent_chain[index_1]
-        while class_super != 0:
-
-            '''index_1 = children_chain.index(fine_class)
-            class_super = parent_chain[index_1]
-            hier_tree[fine_class].append(class_super)  # lv1
-        
-            index_2 = children_chain.index(class_super)
-            class_super = parent_chain[index_2]
-            hier_tree[fine_class].append(class_super)  # lv2
-        
-            index_3 = children_chain.index(class_super)
-            class_super = parent_chain[index_3]
-            hier_tree[fine_class].append(class_super)   # lv3'''
-            i+=1
-            hier_tree[fine_class].append(class_super)
-            index = children_chain.index(class_super)
+        index_1 = child_nodes.index(fine_class)
+        class_super = parent_chain[index_1]     # find a valid route
+        while class_super != 0:     # not the root node (bird)
+            i += 1  # tree depth +1
+            hier_tree[fine_class].append(class_super)   # add the superclass label to the corresponding list of fine-level class
+            index = child_nodes.index(class_super)  # since we have not reach the root node, we trace the next parent node
             class_super = parent_chain[index]
-        levl_count.append(i)
+        levl_count.append(i)    # record the tree depth (eliminate root node) from each leaf rode to root node
     return hier_tree, levl_count
 
 
-# hier_tree[fine_class].append(class_super)
 
 def load_train_test_ids(dataset_path=''):
-    """
-    Return the image ids of training and testing split
-    """
+  train_ids = []
+  test_ids = []
 
-    train_ids = []
-    test_ids = []
+  with open(os.path.join(dataset_path, 'train_test_split.txt')) as f:
+    for line in f:
+      pieces = line.strip().split()
+      image_id = pieces[0]
+      is_train = int(pieces[1])
+      if is_train:
+        train_ids.append(image_id)
+      else:
+        test_ids.append(image_id)
 
-    with open(os.path.join(dataset_path, 'train_test_split.txt')) as f:
-        for line in f:
-          pieces = line.strip().split()
-          image_id = pieces[0]
-          is_train = int(pieces[1])
-          if is_train:
-            train_ids.append(image_id)
-          else:
-            test_ids.append(image_id)
-
-    return train_ids, test_ids
+  return train_ids, test_ids
 
 
 def load_full_path_ids(dataset_path):
-
-    """
-    Return full image ids and image paths of NABirds dataset
-    """
 
     root_path = os.path.join(dataset_path, 'images')
 
@@ -138,11 +117,6 @@ def load_full_path_ids(dataset_path):
 
 
 def load_split_paths_labels(full_ids, full_paths, train_ids, test_ids, full_labels):
-
-    """
-    Return the lists of paths of training-testing split and the corresponding fine-level class labels
-
-    """
 
     train_paths = []
     test_paths = []
@@ -170,74 +144,90 @@ def load_split_paths_labels(full_ids, full_paths, train_ids, test_ids, full_labe
 
 def load_fineclass(dataset_path=''):
 
-    # image_ids = []
     image_classes = []
     with open(os.path.join(dataset_path, 'image_class_labels.txt')) as f:
         for line in f:
             pieces = line.strip().split()
-            # image_id = pieces[0]
             image_class = pieces[1]
-            # image_ids.append(image_id)
             image_classes.append(image_class)
     return image_classes
+
+
 
 
 if __name__ == "__main__":
 
     class_map = save_hierarchy_labels("./nabirds")
-
-    hier_list, lev_count = find_class_hierarchy(class_map)
-
+    hier_tree, lev_count = find_class_hierarchy(class_map)
+    with open('nabirds_hierarchy.pickle', 'wb') as f:
+        pickle.dump(hier_tree, f, protocol=pickle.DEFAULT_PROTOCOL)
+    # print(len(hier_tree.keys()))
     print(max(lev_count), min(lev_count))
 
     train_ids, test_ids = load_train_test_ids("./nabirds")
-    print(len(train_ids), len(test_ids), len(train_ids)+len(test_ids))
+    # print(len(train_ids), len(test_ids), len(train_ids)+len(test_ids))
 
     image_ids, image_fullpaths = load_full_path_ids("./nabirds")
-    print(len(image_ids), len(image_fullpaths))
+    # print(len(image_ids), len(image_fullpaths))
 
     image_fine_labels = load_fineclass("./nabirds")
 
     train_paths, test_paths, train_labels, test_labels = load_split_paths_labels(image_ids, image_fullpaths, train_ids, test_ids, image_fine_labels)
 
-    with open('train_test_split.pickle', 'wb') as f:
-        pickle.dump([train_paths, test_paths], f, protocol=pickle.DEFAULT_PROTOCOL)
+    with open('train_test_nabirds.pickle', 'wb') as f:
+        pickle.dump([train_paths, test_paths, train_labels, test_labels], f, protocol=pickle.DEFAULT_PROTOCOL)
 
-    hier_np = np.ndarray((len(hier_list.keys()), 4))
-    for i, (key, values) in enumerate(hier_list.items()):
-        if len(values) == 3:    # hierarchy completion if the fine-level hierarchy is missed
-            hier_np[i, 1:] = np.array(values)
-            hier_np[i, 0] = hier_np[i, 1]  # the fine-level label is the same as the superclass level
+    '''
+    with open('hier_dict.pickle', 'rb') as f:
+        hier_dict = pickle.load(f)
+    five_hiers = 0
+    four_hiers = 0
+    print(len(hier_dict.keys()))
+    hier_dict_np = np.ndarray((555, 4))
+    for i, (key, values) in enumerate(hier_dict.items()):
+        # print(len(values))
+        
+        if len(values) == 3:
+            # print(values)
+            hier_dict_np[i, 1:] = np.array(values)
+            hier_dict_np[i, 0] = hier_dict_np[i, 1]
         else:
-            hier_np[i, :] = np.array(values)
+            hier_dict_np[i, :] = np.array(values)
+        # print(five_hiers, four_hiers)
+    np.save("hier_dict_np.npy", hier_dict_np)'''
 
-    fine_list = list(hier_np[:, 0])
+    '''hier_dict = np.load("hier_dict_np.npy")
+    fine_list = list(hier_dict[:, 0])
 
     train_labels_np = np.ndarray((len(train_labels), 4))
     test_labels_np = np.ndarray((len(test_labels), 4))
 
-    train_labels = [int(train_label) for train_label in train_labels]  # from string list to int list
+    train_labels = [int(train_label) for train_label in train_labels]
     test_labels = [int(test_label) for test_label in test_labels]
 
     for i, train_label in enumerate(train_labels):
-        train_labels_np[i, :] = hier_np[fine_list.index(train_label)]  # from fine-level labels to construct full level labels
+        train_labels_np[i, :] = hier_dict[fine_list.index(train_label)]
 
     for i, test_label in enumerate(test_labels):
-        test_labels_np[i, :] = hier_np[fine_list.index(test_label)]
-
-    for i in range(4):
-        print("number of level-%d classes: " %(i+1), np.unique(train_labels_np[:, i]).shape[0])
+        test_labels_np[i, :] = hier_dict[fine_list.index(test_label)]
 
     label_encoder_list = [LabelEncoder() for i in range(4)]
-    # Encode each level of labels to the range of [0, number of classes in corresponding level)
     for i in range(4):
-        label_encoder_list[i].fit(list(hier_np[:, i]))
+        label_encoder_list[i].fit(list(hier_dict[:, i]))
 
         train_labels_np[:, i] = label_encoder_list[i].transform(train_labels_np[:, i])
         test_labels_np[:, i] = label_encoder_list[i].transform(test_labels_np[:, i])
 
-    np.save("train_labels_nabirds.npy", train_labels_np)
-    np.save("test_labels_nabirds.npy", test_labels_np)
+    np.save("train_labels_birds.npy", train_labels_np)
+    np.save("test_labels_birds.npy", test_labels_np)
+
+    with open('label_encoders.pickle', 'wb') as f:
+        pickle.dump(label_encoder_list, f, protocol=pickle.HIGHEST_PROTOCOL)'''
+
+    '''train_labels = np.load("train_labels_birds.npy")
+    for i in range(4):
+        train_set = np.unique(train_labels[:, i])
+        print(train_set.shape)'''
 
 
 

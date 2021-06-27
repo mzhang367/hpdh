@@ -118,13 +118,6 @@ def compute_mAP(trn_binary, tst_binary, trn_label, tst_label, device, top=None):
 
     '''
     mAP @ all
-    :param trn_binary:
-    :param tst_binary:
-    :param trn_label:
-    :param tst_label:
-    :param device:
-    :param top:
-    :return:
     '''
 
     AP = []
@@ -132,7 +125,7 @@ def compute_mAP(trn_binary, tst_binary, trn_label, tst_label, device, top=None):
     top_mAP = 0
     for i in range(tst_binary.size(0)):
         query_label, query_binary = tst_label[i], tst_binary[i]
-        _, query_result = torch.sum((query_binary != trn_binary).long(), dim=1).sort()#broadcast, return tuple of (values, indices)
+        _, query_result = torch.sum((query_binary != trn_binary).long(), dim=1).sort()  # broadcast, return tuple of (values, indices)
         correct = (query_label == trn_label[query_result]).float()
         N = torch.sum(correct)
         Ns = torch.arange(1, N+1).float().to(device)
@@ -140,7 +133,7 @@ def compute_mAP(trn_binary, tst_binary, trn_label, tst_label, device, top=None):
         AP.append(torch.mean(Ns / index))
         if top is not None:
             top_result = query_result[:top]
-            top_correct = (query_label == trn_label[top_result]).float()    # boolean --> float?
+            top_correct = (query_label == trn_label[top_result]).float()
             N_top = torch.sum(top_correct)
             top_p.append(1.0*N_top/top)
 
@@ -148,30 +141,6 @@ def compute_mAP(trn_binary, tst_binary, trn_label, tst_label, device, top=None):
 
     mAP = torch.mean(torch.Tensor(AP))
     return mAP, top_mAP
-
-
-def evaluate_pr_ranking(trn_binary, tst_binary, trn_label, tst_label, ranking_list):
-
-    top_p = np.ndarray((tst_binary.shape[0], len(ranking_list)))
-    top_r = np.ndarray((tst_binary.shape[0], len(ranking_list)))
-
-    for i in range(tst_binary.size(0)):
-        query_label, query_binary = tst_label[i], tst_binary[i]
-        _, query_result = torch.sum((query_binary != trn_binary).long(), dim=1).sort()#broadcast, return tuple of (values, indices)
-        cateTrainTest = torch.eq(trn_label, query_label).squeeze_()
-        revelant_num = torch.nonzero(cateTrainTest).numel()
-        for k, top in enumerate(ranking_list):
-            top_result = query_result[:top]
-            top_correct = (query_label == trn_label[top_result]).float()#boolean --> float?
-            N_top = torch.sum(top_correct)
-            top_p[i, k] = 1.0*N_top/top
-            top_r[i, k] = 1.0*N_top/revelant_num
-
-    top_pre = np.mean(top_p, axis=0)
-    top_recall = np.mean(top_r, axis=0)
-
-
-    return top_pre, top_recall
 
 
 def compute_topK(trn_binary, tst_binary, trn_label, tst_label, device, top_list):
@@ -183,7 +152,7 @@ def compute_topK(trn_binary, tst_binary, trn_label, tst_label, device, top_list)
         _, query_result = torch.sum((query_binary != trn_binary).long(), dim=1).sort()#broadcast, return tuple of (values, indices)
         for j, top in enumerate(top_list):
             top_result = query_result[:top]
-            top_correct = (query_label == trn_label[top_result]).float()#boolean --> float?
+            top_correct = (query_label == trn_label[top_result]).float()
             N_top = torch.sum(top_correct)
             top_p[i, j] = 1.0*N_top/top
 
@@ -198,7 +167,6 @@ def compute_result(dataloader, net, device, centers=None):
     label = []
     for i, (imgs, cls, *_) in enumerate(dataloader):
         imgs, cls = imgs.to(device), cls.to(device)
-        # transformed_imgs = transform(imgs)
         hash_values = net(imgs)
         if centers is not None:
             center_distance = 0.5*(hash_values.size(1) - torch.mm(torch.sign(hash_values.data), centers.t()))
@@ -219,23 +187,6 @@ def EncodingOnehot(target, nclasses):
     target_onehot.zero_()
     target_onehot.scatter_(1, target.cpu().view(-1, 1), 1)#
     return target_onehot
-
-
-def compute_result_csq(dataloader, net, device):
-
-    hash_codes = []
-    label = []
-    for i, (imgs, cls, *_) in enumerate(dataloader):
-        imgs, cls = imgs.to(device), cls.to(device)
-        # imgs = transform(imgs)
-        hash_values = net(imgs)
-        hash_codes.append(hash_values.data)
-        label.append(cls)
-
-    hash_codes = torch.cat(hash_codes)
-    B = torch.where(hash_codes > 0.0, torch.tensor([1.0]).cuda(), torch.tensor([-1.0]).cuda())
-
-    return B, torch.cat(label)
 
 
 #if __name__ == '__main__':
