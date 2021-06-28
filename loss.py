@@ -1,17 +1,5 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-
-def EncodingOnehot(target, nclasses):
-    target_onehot = torch.Tensor(target.size(0), nclasses).cuda()
-    target_onehot.zero_()
-    target_onehot.scatter_(1, target.view(-1, 1), 1)
-    return target_onehot
-
-
-def CalcSim(batch_label, train_label):
-    S = batch_label.mm(train_label.t())
-    return S
 
 
 class ClassWiseLoss(nn.Module):

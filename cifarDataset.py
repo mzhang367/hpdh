@@ -141,8 +141,7 @@ class CIFAR10(data.Dataset):
         if not self.coarse:
             return img, target
         else:
-            #return img, target, coarse_target
-            return img, np.array([target, coarse_target])   ########################## To check
+            return img, np.array([target, coarse_target])
 
     def __len__(self):
         if self.train:

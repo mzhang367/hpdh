@@ -1,15 +1,14 @@
 import torch
 import numpy as np
-from torch.utils.data import DataLoader
+from utils import MyCustomNabirds
 from cifarDataset import CIFAR100
-import torchvision.transforms as transforms
-from utils import *
+import pickle
 
 
 def compute_imAHP(trainset, testset, hier_list, radius=2500):
 
     '''
-    pre-compute ideal mAHP
+    pre-computed ideal mAHP
     '''
 
     train_labels = trainset.labels
@@ -32,7 +31,7 @@ def compute_imAHP(trainset, testset, hier_list, radius=2500):
 def compute_iDCG(trainset, testset, hierar_list, base=2, radius=100):
 
     '''
-    pre-compute ideal DCG
+    pre-computed ideal DCG
     '''
 
     train_labels = trainset.labels
@@ -83,9 +82,6 @@ def mAHP_topk(train_codes, train_labels, test_codes, test_labels, iHPs, top_list
 
 
 def mAHP_torch(train_codes, train_labels, test_codes, test_labels, iHPs, r=2500, n_level=2):
-    """
-    Use pre-computed mAHPs
-    """
 
     AHPx = []
 
@@ -139,14 +135,14 @@ def mnDCG_torch(train_codes, train_labels, test_codes, test_labels, iDCGs, base=
 
 if __name__ == '__main__':
 
-    dataset = "nabirds"
+    dataset = "cifar100"
 
     if dataset == "cifar100":
         trainset = CIFAR100(root='./data_cifar100', train=True, download=False, transform=None, coarse=True)
         testset = CIFAR100(root='./data_cifar100', train=False, download=False, transform=None, coarse=True)
         hier_list = [100, 20]
     elif dataset == "nabirds":
-        with open('train_test_split_list.pickle', 'rb') as f:
+        with open('train_test_split.pickle', 'rb') as f:
             train_paths, test_paths = pickle.load(f)
         train_labels = np.load("train_labels_birds.npy")
         test_labels = np.load("test_labels_birds.npy")

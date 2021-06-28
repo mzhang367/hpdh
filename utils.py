@@ -1,10 +1,7 @@
 # coding: utf-8
 import torch
-from torch.utils.data import DataLoader, Dataset    # different from MyCustom
+from torch.utils.data import Dataset
 from PIL import Image
-import numpy as np
-import time
-import pickle
 import os
 import sys
 import errno

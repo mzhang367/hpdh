@@ -1,12 +1,9 @@
 import os
-import cv2
 import numpy as np
-import pdb
 from collections import defaultdict
 import pickle
 from sklearn.preprocessing import LabelEncoder
-from PIL import Image
-import matplotlib.pyplot as plt
+
 
 
 def list_images(basePath, contains=None):
